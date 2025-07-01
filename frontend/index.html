@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Script Manager Web</title>
+    <link rel="stylesheet" href="style.css" />
+
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"
+      rel="stylesheet"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="editor-modal" class="modal-overlay">
+      <div class="modal editor-modal-content">
+        <div class="modal-header">
+          <div class="editor-header-info">
+            <h2 id="editor-modal-title">Edit File</h2>
+            <span id="editor-file-type" class="file-type-badge"></span>
+          </div>
+          <button class="close-modal-btn" id="close-editor-modal">
+            &times;
+          </button>
+        </div>
+        <div class="editor-info">
+          <p>for <strong id="editor-script-name"></strong></p>
+          <p class="file-path" id="editor-file-path"></p>
+        </div>
+        <div class="editor-container">
+          <div class="editor-toolbar">
+            <button id="format-btn" class="toolbar-btn">Format</button>
+            <button id="validate-btn" class="toolbar-btn">Validate</button>
+            <span id="editor-status" class="editor-status"></span>
+          </div>
+          <div class="code-editor-wrapper">
+            <textarea id="code-editor" spellcheck="false"></textarea>
+            <pre
+              id="code-highlight"
+              class="language-properties"
+            ><code></code></pre>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="save-editor-btn" class="primary-btn">Save Changes</button>
+          <button id="cancel-editor-btn" class="secondary-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="container" id="app-container">
+      <!-- Top Navigation Bar -->
+      <header>
+        <div class="nav-left">
+          <h1 class="app-title">Script Manager Web</h1>
+        </div>
+
+        <div class="nav-center">
+          <div class="search-container">
+            <div class="search-box">
+              <span class="search-icon">🔍</span>
+              <input
+                type="text"
+                id="search-input"
+                placeholder="Search scripts... (Press Enter to run)"
+                autocomplete="off"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="nav-right">
+          <div class="system-status">
+            <div class="status-item">
+              <span class="status-label">Running</span>
+              <span id="running-count" class="status-value">0</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">Memory</span>
+              <span id="memory-usage" class="status-value">--</span>
+            </div>
+          </div>
+          <button
+            id="theme-toggle"
+            class="nav-btn"
+            title="Toggle Dark/Light Mode"
+          >
+            <span class="theme-icon">🌙</span>
+          </button>
+          <button id="settings-btn" class="nav-btn" title="Settings">
+            <span class="settings-icon">⚙️</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="main-layout">
+        <!-- Modern Sidebar -->
+        <aside class="sidebar">
+          <div class="sidebar-section">
+            <h3 class="sidebar-title">Filters</h3>
+
+            <div class="filter-group">
+              <label class="filter-label">Language Type</label>
+              <div class="filter-options">
+                <div
+                  class="filter-option active"
+                  data-filter="type"
+                  data-value="all"
+                >
+                  <div class="filter-checkbox checked"></div>
+                  <span class="filter-option-label">All Languages</span>
+                  <span class="filter-option-count" id="all-count">0</span>
+                </div>
+                <div
+                  class="filter-option"
+                  data-filter="type"
+                  data-value="Node.js"
+                >
+                  <div class="language-icon nodejs"></div>
+                  <span class="filter-option-label">Node.js</span>
+                  <span class="filter-option-count" id="nodejs-count">0</span>
+                </div>
+                <div
+                  class="filter-option"
+                  data-filter="type"
+                  data-value="Python"
+                >
+                  <div class="language-icon python"></div>
+                  <span class="filter-option-label">Python</span>
+                  <span class="filter-option-count" id="python-count">0</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="filter-group">
+              <label class="filter-label">Status</label>
+              <div class="filter-options">
+                <div
+                  class="filter-option active"
+                  data-filter="status"
+                  data-value="all"
+                >
+                  <div class="filter-checkbox checked"></div>
+                  <span class="filter-option-label">All Status</span>
+                  <span class="filter-option-count" id="all-status-count"
+                    >0</span
+                  >
+                </div>
+                <div
+                  class="filter-option"
+                  data-filter="status"
+                  data-value="Running"
+                >
+                  <div class="filter-checkbox"></div>
+                  <span class="filter-option-label">Running</span>
+                  <span class="filter-option-count" id="running-status-count"
+                    >0</span
+                  >
+                </div>
+                <div
+                  class="filter-option"
+                  data-filter="status"
+                  data-value="Idle"
+                >
+                  <div class="filter-checkbox"></div>
+                  <span class="filter-option-label">Idle</span>
+                  <span class="filter-option-count" id="idle-status-count"
+                    >0</span
+                  >
+                </div>
+              </div>
+            </div>
+
+            <div class="filter-group">
+              <label class="filter-label">Sort By</label>
+              <select id="sort-select" class="sort-select">
+                <option value="name-asc">Name (A-Z)</option>
+                <option value="name-desc">Name (Z-A)</option>
+                <option value="last-run">Last Run</option>
+                <option value="type">Type</option>
+              </select>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main>
+          <div class="content-header">
+            <div class="content-title">
+              <h2>All Scripts</h2>
+              <span id="script-count" class="count-badge">0 scripts</span>
+            </div>
+            <div class="content-actions">
+              <button id="refresh-scripts" class="action-btn secondary">
+                <span>🔄</span> Refresh
+              </button>
+            </div>
+          </div>
+
+          <div id="script-list"></div>
+        </main>
+      </div>
+
+      <!-- Modern Console Panel -->
+      <div id="log-viewer" class="log-viewer-panel">
+        <div class="log-header">
+          <h3>Console: <span id="log-script-name">No script selected</span></h3>
+          <div class="console-actions">
+            <button
+              id="clear-log-btn"
+              class="log-action-btn"
+              title="Clear Console"
+            >
+              <span>🗑️</span> Clear
+            </button>
+            <button
+              id="download-log"
+              class="log-action-btn"
+              title="Download Log"
+            >
+              <span>💾</span> Download
+            </button>
+            <button
+              id="close-log-btn"
+              class="log-action-btn"
+              title="Close Console"
+            >
+              <span>✕</span>
+            </button>
+          </div>
+        </div>
+        <div id="log-output" class="console-output">
+          <div class="empty-console">
+            <span class="empty-icon">📟</span>
+            <span>No script selected. Run a script to see output here.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <svg width="0" height="0" style="display: none">
+      <symbol id="icon-python" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M14.5,14.2H9.5c-1.2,0-2.2-1-2.2-2.2v-1c0-1.2,1-2.2,2.2-2.2H12v2.5h2.5V14.2z M12,16.8v-2.5H9.5c-2.5,0-4.5-2-4.5-4.5v-1 C5,6,7,4,9.5,4H12c2.8,0,5,2.2,5,5v2h2.5c1.4,0,2.5,1.1,2.5,2.5v1c0,1.4-1.1,2.5-2.5,2.5H14.5v2.8c0,1.2-1,2.2-2.2,2.2h-1 C10.1,22,9,20.9,9,19.5v-2.8H12z"
+        />
+      </symbol>
+      <symbol id="icon-nodejs" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M9,22.5a2.47,2.47,0,0,1-1.76-.73L2.06,16.59a2.5,2.5,0,0,1,0-3.54l5.18-5.18a2.5,2.5,0,0,1,3.54,0L12,9.12l1.22-1.23a2.5,2.5,0,0,1,3.54,0l5.18,5.18a2.5,2.5,0,0,1,0,3.54l-5.18,5.18A2.47,2.47,0,0,1,15,22.5Zm0-19a.49.49,0,0,0-.35.15L3.47,8.83a.5.5,0,0,0,0,.71l5.18,5.18a.5.5,0,0,0,.71,0L10.58,13.5a2.5,2.5,0,0,1,0-3.54L9.35,8.72A.49.49,0,0,0,9,8.58v0Zm6,10.66a.5.5,0,0,0-.35.15L9.47,24.57a.5.5,0,0,0,0,.71l5.18,5.18a.5.5,0,0,0,.71,0L20.53,25.3a.5.5,0,0,0,0-.71l-4.18-4.18Z"
+          transform="translate(0, -6)"
+        />
+      </symbol>
+    </svg>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

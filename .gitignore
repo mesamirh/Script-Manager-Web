@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# User scripts (examples can be committed)
+scripts/nodejs/openverse-bot/
+scripts/nodejs/heavy-process/
+scripts/nodejs/long-running/
+scripts/python/*
+!scripts/python/.gitkeep
+!scripts/nodejs/simple-logger/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+.cache/

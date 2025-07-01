@@ -1,0 +1,51 @@
+{
+  "name": "script-manager-web",
+  "version": "1.0.0",
+  "description": "A modern web dashboard to manage and run scripts locally with real-time monitoring.",
+  "main": "backend/server.js",
+  "bin": {
+    "script-manager-web": "./launcher.js"
+  },
+  "scripts": {
+    "start": "node backend/server.js",
+    "launch": "node launcher.js",
+    "dev": "nodemon backend/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "echo \"No linting configured\"",
+    "setup": "npm install && echo \"Setup complete! Run 'npm run launch' to start the application.\"",
+    "postinstall": "node -e \"const fs=require('fs'),os=require('os'),path=require('path'); if(os.platform()!=='win32'){ try{fs.chmodSync('start-server.sh',0o755);fs.chmodSync('launcher.js',0o755); if(fs.existsSync('start-server.command')){fs.chmodSync('start-server.command',0o755);} const macosDir=path.join('Script Manager Web.app','Contents','MacOS'); if(fs.existsSync(macosDir)){fs.chmodSync(path.join(macosDir,'launch'),0o755);}}catch(e){console.log('Note: Some permissions could not be set, but the app should still work.');} }\""
+  },
+  "keywords": [
+    "script-manager",
+    "dashboard",
+    "automation",
+    "nodejs",
+    "python",
+    "websocket",
+    "real-time"
+  ],
+  "author": "Script Manager Team",
+  "license": "MIT",
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mesamirh/Script-Manager-Web.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mesamirh/Script-Manager-Web/issues"
+  },
+  "homepage": "https://github.com/mesamirh/Script-Manager-Web#readme"
+}

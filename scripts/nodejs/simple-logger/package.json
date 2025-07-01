@@ -1,0 +1,13 @@
+{
+  "name": "simple-logger",
+  "version": "1.0.0",
+  "description": "A simple logging script for testing Script Manager Web",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "keywords": ["logging", "test", "simple"],
+  "author": "Script Manager",
+  "license": "MIT"
+}
