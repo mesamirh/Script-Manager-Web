@@ -193,7 +193,129 @@ const getScripts = () => {
 
 app.get("/api/scripts", (req, res) => res.json(getScripts()));
 
-app.post("/api/scripts/run/:scriptId", (req, res) => {
+// Helper function to check if node_modules exists and has dependencies
+function checkNodeModules(scriptPath) {
+  const nodeModulesPath = path.join(scriptPath, "node_modules");
+  const packageJsonPath = path.join(scriptPath, "package.json");
+  
+  if (!fs.existsSync(packageJsonPath)) {
+    return { hasPackageJson: false, needsInstall: false };
+  }
+  
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+    const hasDependencies = packageJson.dependencies && Object.keys(packageJson.dependencies).length > 0;
+    const hasDevDependencies = packageJson.devDependencies && Object.keys(packageJson.devDependencies).length > 0;
+    
+    if (!hasDependencies && !hasDevDependencies) {
+      return { hasPackageJson: true, needsInstall: false };
+    }
+    
+    // Check if node_modules exists and has some content
+    if (!fs.existsSync(nodeModulesPath)) {
+      return { hasPackageJson: true, needsInstall: true };
+    }
+    
+    // Check if node_modules is empty or has minimal content
+    const nodeModulesContents = fs.readdirSync(nodeModulesPath);
+    const hasSubstantialContent = nodeModulesContents.length > 2; // More than just .bin and maybe one package
+    
+    return { hasPackageJson: true, needsInstall: !hasSubstantialContent };
+  } catch (error) {
+    return { hasPackageJson: true, needsInstall: false };
+  }
+}
+
+// Helper function to auto-install dependencies
+async function autoInstallDependencies(scriptPath, scriptId, scriptName) {
+  return new Promise((resolve, reject) => {
+    broadcast({
+      type: "install_start",
+      scriptId,
+      message: `[SYSTEM] Dependencies not found for ${scriptName}. Installing automatically...\n`,
+    });
+
+    broadcast({
+      type: "log",
+      scriptId,
+      stream: "stdout",
+      message: `[SYSTEM] Dependencies not found for ${scriptName}. Installing automatically...\n`,
+    });
+
+    const installProcess = spawn("npm", ["install"], {
+      cwd: scriptPath,
+      shell: true,
+    });
+
+    installProcess.stdout.on("data", (data) => {
+      broadcast({
+        type: "log",
+        scriptId,
+        stream: "stdout",
+        message: `[NPM] ${data.toString()}`,
+      });
+    });
+
+    installProcess.stderr.on("data", (data) => {
+      broadcast({
+        type: "log",
+        scriptId,
+        stream: "stderr",
+        message: `[NPM] ${data.toString()}`,
+      });
+    });
+
+    installProcess.on("close", (code) => {
+      if (code === 0) {
+        broadcast({
+          type: "install_complete",
+          scriptId,
+          success: true,
+          message: "Dependencies installed successfully",
+        });
+        broadcast({
+          type: "log",
+          scriptId,
+          stream: "stdout",
+          message: `[SYSTEM] Dependencies installed successfully for ${scriptName}\n`,
+        });
+        resolve();
+      } else {
+        broadcast({
+          type: "install_complete",
+          scriptId,
+          success: false,
+          message: `Failed to install dependencies (exit code ${code})`,
+        });
+        broadcast({
+          type: "log",
+          scriptId,
+          stream: "stderr",
+          message: `[SYSTEM] Failed to install dependencies for ${scriptName} (exit code ${code})\n`,
+        });
+        reject(new Error(`npm install failed with exit code ${code}`));
+      }
+    });
+
+    installProcess.on("error", (err) => {
+      broadcast({
+        type: "install_complete",
+        scriptId,
+        success: false,
+        message: `Failed to start npm install: ${err.message}`,
+      });
+      broadcast({
+        type: "log",
+        scriptId,
+        stream: "stderr",
+        message: `[SYSTEM] Failed to start npm install: ${err.message}\n`,
+      });
+      reject(err);
+    });
+  });
+}
+
+app.post("/api/scripts/run/:scriptId", async (req, res) => {
   const { scriptId } = req.params;
   const script = getScripts().find((s) => s.id === scriptId);
 
@@ -231,6 +353,20 @@ app.post("/api/scripts/run/:scriptId", (req, res) => {
   console.log(`[DEBUG] Is standalone: ${script.isStandalone}`);
 
   if (script.type === "Node.js") {
+    // Check if dependencies need to be installed
+    if (!script.isStandalone) {
+      const { hasPackageJson, needsInstall } = checkNodeModules(script.path);
+      
+      if (hasPackageJson && needsInstall) {
+        try {
+          // Auto-install dependencies
+          await autoInstallDependencies(script.path, scriptId, script.name);
+        } catch (error) {
+          return res.status(500).json({ error: `Failed to install dependencies: ${error.message}` });
+        }
+      }
+    }
+
     if (script.isStandalone) {
       command = "node";
       args = [script.fileName];
@@ -491,6 +627,124 @@ app.post("/api/scripts/config/:scriptId", (req, res) => {
   } catch (error) {
     console.error("Error saving config file:", error);
     res.status(500).json({ error: "Failed to save configuration file" });
+  }
+});
+
+app.post("/api/scripts/install/:scriptId", (req, res) => {
+  const { scriptId } = req.params;
+  const script = getScripts().find((s) => s.id === scriptId);
+
+  console.log(`[DEBUG] Attempting to install dependencies for script: ${scriptId}`);
+  console.log(`[DEBUG] Script found:`, script ? "Yes" : "No");
+
+  if (!script) {
+    return res.status(404).json({ error: "Script not found" });
+  }
+
+  if (script.type !== "Node.js") {
+    return res.status(400).json({ error: "Dependency installation only supported for Node.js scripts" });
+  }
+
+  // Check if package.json exists
+  const packageJsonPath = path.join(script.path, "package.json");
+  if (!fs.existsSync(packageJsonPath)) {
+    return res.status(400).json({ error: "package.json not found in script directory" });
+  }
+
+  // Check if already installing dependencies for this script
+  const installProcessKey = `install_${scriptId}`;
+  if (runningProcesses.has(installProcessKey)) {
+    return res.status(400).json({ error: "Dependency installation already in progress" });
+  }
+
+  console.log(`[DEBUG] Installing dependencies for: ${script.path}`);
+
+  try {
+    const spawnOptions = {
+      cwd: script.path,
+      env: process.env,
+      shell: true,
+    };
+
+    const child = spawn("npm", ["install"], spawnOptions);
+    runningProcesses.set(installProcessKey, child);
+
+    // Broadcast installation start
+    broadcast({
+      type: "install_start",
+      scriptId,
+      message: `[SYSTEM] Installing dependencies for ${script.name}...\n`,
+    });
+
+    broadcast({
+      type: "log",
+      scriptId,
+      stream: "stdout",
+      message: `[SYSTEM] Running 'npm install' in ${script.path}...\n`,
+    });
+
+    child.stdout.on("data", (data) => {
+      broadcast({
+        type: "log",
+        scriptId,
+        stream: "stdout",
+        message: data.toString(),
+      });
+    });
+
+    child.stderr.on("data", (data) => {
+      broadcast({
+        type: "log",
+        scriptId,
+        stream: "stderr",
+        message: data.toString(),
+      });
+    });
+
+    child.on("close", (code) => {
+      const success = code === 0;
+      const message = success 
+        ? `[SYSTEM] Dependencies installed successfully for ${script.name}!\n`
+        : `[SYSTEM] Failed to install dependencies for ${script.name} (exit code ${code})\n`;
+      
+      broadcast({ 
+        type: "log", 
+        scriptId, 
+        stream: success ? "stdout" : "stderr", 
+        message 
+      });
+
+      broadcast({
+        type: "install_complete",
+        scriptId,
+        success,
+        message: success ? "Dependencies installed successfully" : "Failed to install dependencies",
+      });
+
+      runningProcesses.delete(installProcessKey);
+
+      console.log(`[DEBUG] npm install finished for ${scriptId} with code: ${code}`);
+    });
+
+    child.on("error", (err) => {
+      const message = `[SYSTEM] Failed to start npm install for ${script.name}: ${err.message}\n`;
+      broadcast({ type: "log", scriptId, stream: "stderr", message });
+      
+      broadcast({
+        type: "install_complete",
+        scriptId,
+        success: false,
+        message: `Failed to start npm install: ${err.message}`,
+      });
+
+      runningProcesses.delete(installProcessKey);
+      console.error(`[DEBUG] npm install error for ${scriptId}:`, err);
+    });
+
+    res.json({ message: `Dependency installation started for ${script.name}` });
+  } catch (error) {
+    console.error(`Error starting npm install for script ${scriptId}:`, error);
+    res.status(500).json({ error: "Failed to start dependency installation" });
   }
 });
 

@@ -71,6 +71,28 @@ document.addEventListener("DOMContentLoaded", () => {
         case "refresh_scripts":
           fetchScripts();
           break;
+        case "install_start":
+          if (data.scriptId === currentLogScriptId) {
+            appendLog(data.message, "stdout");
+          }
+          showNotification("Installing dependencies...", "info");
+          break;
+        case "install_complete":
+          if (data.scriptId === currentLogScriptId) {
+            appendLog(`[SYSTEM] Installation ${data.success ? "completed successfully" : "failed"}\n`, data.success ? "stdout" : "stderr");
+          }
+          showNotification(data.message, data.success ? "success" : "error");
+          
+          // Re-enable install button on all script cards for this script
+          const scriptCard = document.querySelector(`[data-id="${data.scriptId}"]`);
+          if (scriptCard) {
+            const installBtn = scriptCard.querySelector(".install-btn");
+            if (installBtn) {
+              installBtn.disabled = false;
+              installBtn.innerHTML = '<span>📦</span> Install';
+            }
+          }
+          break;
       }
     };
 
@@ -424,6 +446,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 } title="Stop script">
                     <span>⏹️</span> Stop
                 </button>
+                ${
+                  script.type === "Node.js"
+                    ? `<button class="action-btn install-btn" title="Install npm dependencies">
+                    <span>📦</span> Install
+                </button>`
+                    : ""
+                }
                 <button class="action-btn env-btn" title="Edit environment variables">
                     <span>🔧</span> .env
                 </button>
@@ -438,6 +467,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const runBtn = card.querySelector(".run-btn");
     const stopBtn = card.querySelector(".stop-btn");
+    const installBtn = card.querySelector(".install-btn");
     const envBtn = card.querySelector(".env-btn");
     const configBtn = card.querySelector(".config-btn");
     const viewLogBtn = card.querySelector(".view-log-btn");
@@ -451,6 +481,13 @@ document.addEventListener("DOMContentLoaded", () => {
       stopScript(script.id);
       addButtonFeedback(stopBtn, "<span>⏹️</span> Stopping...");
     });
+
+    if (installBtn && script.type === "Node.js") {
+      installBtn.addEventListener("click", () => {
+        installDependencies(script.id);
+        addButtonFeedback(installBtn, "<span>📦</span> Installing...");
+      });
+    }
 
     envBtn.addEventListener("click", () => {
       openFileEditor(script.id, "env");
@@ -545,18 +582,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function runScript(scriptId) {
     showLogViewer(scriptId);
+    
+    // Show initial notification
+    const script = scripts.find(s => s.id === scriptId);
+    const scriptName = script ? script.name : 'Script';
+    
     try {
       const response = await fetch(`${API_URL}/api/scripts/run/${scriptId}`, {
         method: "POST",
       });
       if (response.ok) {
-        showNotification("Script started successfully", "success");
+        showNotification(`${scriptName} starting...`, "success");
       } else {
-        throw new Error("Failed to start script");
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to start script");
       }
     } catch (error) {
       console.error("Error running script:", error);
-      showNotification("Failed to start script", "error");
+      showNotification(error.message || "Failed to start script", "error");
     }
   }
 
@@ -573,6 +616,24 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (error) {
       console.error("Error stopping script:", error);
       showNotification("Failed to stop script", "error");
+    }
+  }
+
+  async function installDependencies(scriptId) {
+    showLogViewer(scriptId);
+    try {
+      const response = await fetch(`${API_URL}/api/scripts/install/${scriptId}`, {
+        method: "POST",
+      });
+      if (response.ok) {
+        showNotification("Dependency installation started", "success");
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to start dependency installation");
+      }
+    } catch (error) {
+      console.error("Error installing dependencies:", error);
+      showNotification(error.message || "Failed to start dependency installation", "error");
     }
   }
 
@@ -667,6 +728,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const line = document.createElement("div");
     line.className = `log-line ${stream}`;
+    
+    // Add special classes for enhanced styling
+    if (message.includes('[SYSTEM]')) {
+      line.classList.add('system');
+    } else if (message.includes('[NPM]')) {
+      line.classList.add('npm');
+    } else if (message.includes('[INSTALL]')) {
+      line.classList.add('install');
+    }
+    
     line.textContent = message;
     logOutput.appendChild(line);
     logOutput.scrollTop = logOutput.scrollHeight;

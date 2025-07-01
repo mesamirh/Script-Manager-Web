@@ -636,6 +636,17 @@ main {
   box-shadow: var(--shadow-md);
 }
 
+.install-btn {
+  background: #6f42c1;
+  color: white;
+}
+
+.install-btn:hover:not(:disabled) {
+  background: #5a3498;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
 .action-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -724,6 +735,26 @@ main {
 
 .log-line.stderr {
   color: #ff6b6b;
+}
+
+/* Enhanced log styling for system messages */
+.log-line.system {
+  color: #58a6ff;
+  font-weight: 500;
+}
+
+.log-line.npm {
+  color: #ffa657;
+  font-weight: 400;
+}
+
+.log-line.install {
+  color: #a5f3fc;
+  font-weight: 500;
+  background: rgba(165, 243, 252, 0.1);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  margin: 0.25rem 0;
 }
 
 /* --- Sort Select Styling --- */
