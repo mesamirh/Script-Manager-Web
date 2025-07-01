@@ -113,7 +113,7 @@ function openBrowser(url) {
       break;
     case "win32": // Windows
       command = "start";
-      url = `"${url}"`; // Windows needs quotes
+      url = `"${url}"`;
       break;
     default: // Linux and others
       command = "xdg-open";

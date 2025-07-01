@@ -45,10 +45,21 @@ app.get("/", (req, res) => {
 });
 
 const getScripts = () => {
+  console.log(`[DEBUG] Scanning scripts directory: ${SCRIPTS_BASE_DIR}`);
+  console.log(`[DEBUG] Node.js scripts directory: ${NODE_SCRIPTS_DIR}`);
+  console.log(`[DEBUG] Python scripts directory: ${PYTHON_SCRIPTS_DIR}`);
+  console.log(`[DEBUG] Platform: ${process.platform}`);
+
   const readDirForProjects = (dir, type) => {
-    if (!fs.existsSync(dir)) return [];
+    if (!fs.existsSync(dir)) {
+      console.log(`[DEBUG] Directory does not exist: ${dir}`);
+      return [];
+    }
+
+    console.log(`[DEBUG] Reading directory: ${dir} for ${type} scripts`);
 
     const entries = fs.readdirSync(dir, { withFileTypes: true });
+    console.log(`[DEBUG] Found ${entries.length} entries in ${dir}`);
     const scripts = [];
 
     const standaloneFiles = entries.filter((dirent) => dirent.isFile());
@@ -129,11 +140,12 @@ const getScripts = () => {
         }
       } else if (type === "Python") {
         const runShPath = path.join(projectPath, "run.sh");
+        const runBatPath = path.join(projectPath, "run.bat");
         const mainPyPath = path.join(projectPath, "main.py");
         const appPyPath = path.join(projectPath, "app.py");
         const requirementsPath = path.join(projectPath, "requirements.txt");
 
-        if (fs.existsSync(runShPath)) {
+        if (fs.existsSync(runShPath) || fs.existsSync(runBatPath)) {
           isRunnable = true;
           tags.push("shell-script");
         } else if (fs.existsSync(mainPyPath) || fs.existsSync(appPyPath)) {
@@ -169,7 +181,14 @@ const getScripts = () => {
 
   const nodeScripts = readDirForProjects(NODE_SCRIPTS_DIR, "Node.js");
   const pythonScripts = readDirForProjects(PYTHON_SCRIPTS_DIR, "Python");
-  return [...nodeScripts, ...pythonScripts];
+
+  const allScripts = [...nodeScripts, ...pythonScripts];
+  console.log(`[DEBUG] Total scripts found: ${allScripts.length}`);
+  console.log(
+    `[DEBUG] Node.js scripts: ${nodeScripts.length}, Python scripts: ${pythonScripts.length}`
+  );
+
+  return allScripts;
 };
 
 app.get("/api/scripts", (req, res) => res.json(getScripts()));
@@ -177,6 +196,13 @@ app.get("/api/scripts", (req, res) => res.json(getScripts()));
 app.post("/api/scripts/run/:scriptId", (req, res) => {
   const { scriptId } = req.params;
   const script = getScripts().find((s) => s.id === scriptId);
+
+  console.log(`[DEBUG] Attempting to run script: ${scriptId}`);
+  console.log(`[DEBUG] Script found:`, script ? "Yes" : "No");
+  console.log(
+    `[DEBUG] Already running:`,
+    runningProcesses.has(scriptId) ? "Yes" : "No"
+  );
 
   if (!script || runningProcesses.has(scriptId)) {
     return res
@@ -198,6 +224,12 @@ app.post("/api/scripts/run/:scriptId", (req, res) => {
   }
 
   let command, args;
+  console.log(
+    `[DEBUG] Script type: ${script.type}, Platform: ${process.platform}`
+  );
+  console.log(`[DEBUG] Script path: ${script.path}`);
+  console.log(`[DEBUG] Is standalone: ${script.isStandalone}`);
+
   if (script.type === "Node.js") {
     if (script.isStandalone) {
       command = "node";
@@ -219,19 +251,26 @@ app.post("/api/scripts/run/:scriptId", (req, res) => {
       }
     }
   } else if (script.type === "Python") {
+    const pythonCommand = process.platform === "win32" ? "python" : "python3";
+
     if (script.isStandalone) {
-      command = "python3";
+      command = pythonCommand;
       args = [script.fileName];
     } else {
       const runShPath = path.join(script.path, "run.sh");
-      if (fs.existsSync(runShPath)) {
+      const runBatPath = path.join(script.path, "run.bat");
+
+      if (process.platform === "win32" && fs.existsSync(runBatPath)) {
+        command = "cmd";
+        args = ["/c", "run.bat"];
+      } else if (process.platform !== "win32" && fs.existsSync(runShPath)) {
         command = "sh";
         args = ["run.sh"];
       } else if (fs.existsSync(path.join(script.path, "main.py"))) {
-        command = "python3";
+        command = pythonCommand;
         args = ["main.py"];
       } else if (fs.existsSync(path.join(script.path, "app.py"))) {
-        command = "python3";
+        command = pythonCommand;
         args = ["app.py"];
       } else {
         return res.status(400).json({ error: "No runnable Python file found" });
@@ -239,13 +278,18 @@ app.post("/api/scripts/run/:scriptId", (req, res) => {
     }
   }
 
+  console.log(`[DEBUG] Final command: ${command} ${args.join(" ")}`);
+  console.log(`[DEBUG] Working directory: ${script.path}`);
+
   try {
-    const child = spawn(command, args, {
+    const spawnOptions = {
       cwd: script.path,
       env: scriptEnv,
       shell: true,
-      detached: false,
-    });
+      detached: process.platform !== "win32",
+    };
+
+    const child = spawn(command, args, spawnOptions);
 
     runningProcesses.set(scriptId, child);
 
@@ -310,36 +354,40 @@ app.post("/api/scripts/stop/:scriptId", (req, res) => {
   if (child) {
     try {
       if (!child.killed && child.pid) {
-        try {
-          process.kill(-child.pid, "SIGTERM");
-        } catch (groupError) {
-          if (groupError.code === "ESRCH") {
-            try {
-              process.kill(child.pid, "SIGTERM");
-            } catch (mainError) {
-              if (mainError.code !== "ESRCH") {
-                throw mainError;
+        if (process.platform === "win32") {
+          spawn("taskkill", ["/pid", child.pid, "/t", "/f"], { shell: true });
+        } else {
+          try {
+            process.kill(-child.pid, "SIGTERM");
+          } catch (groupError) {
+            if (groupError.code === "ESRCH") {
+              try {
+                process.kill(child.pid, "SIGTERM");
+              } catch (mainError) {
+                if (mainError.code !== "ESRCH") {
+                  throw mainError;
+                }
               }
+            } else {
+              throw groupError;
             }
-          } else {
-            throw groupError;
           }
-        }
 
-        setTimeout(() => {
-          if (!child.killed && child.pid) {
-            try {
-              process.kill(child.pid, "SIGKILL");
-            } catch (killError) {
-              if (killError.code !== "ESRCH") {
-                console.error(
-                  `Error force killing process ${child.pid}:`,
-                  killError.message
-                );
+          setTimeout(() => {
+            if (!child.killed && child.pid) {
+              try {
+                process.kill(child.pid, "SIGKILL");
+              } catch (killError) {
+                if (killError.code !== "ESRCH") {
+                  console.error(
+                    `Error force killing process ${child.pid}:`,
+                    killError.message
+                  );
+                }
               }
             }
-          }
-        }, 5000);
+          }, 5000);
+        }
 
         res.json({ message: "Stop signal sent" });
       } else {

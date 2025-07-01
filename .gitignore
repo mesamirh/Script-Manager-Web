@@ -15,6 +15,7 @@ scripts/nodejs/heavy-process/
 scripts/nodejs/long-running/
 scripts/python/*
 !scripts/python/.gitkeep
+!scripts/python/sample-script/
 !scripts/nodejs/simple-logger/
 
 # Logs

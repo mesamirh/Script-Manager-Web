@@ -1,0 +1,3 @@
+@echo off
+echo Starting Python Sample Script...
+python main.py
